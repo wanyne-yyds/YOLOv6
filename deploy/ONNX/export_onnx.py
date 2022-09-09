@@ -7,7 +7,8 @@ import os
 import torch
 import torch.nn as nn
 import onnx
-
+import thop
+import os.path as osp
 ROOT = os.getcwd()
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
@@ -15,38 +16,54 @@ if str(ROOT) not in sys.path:
 from yolov6.models.yolo import *
 from yolov6.models.effidehead import Detect
 from yolov6.layers.common import *
-from yolov6.utils.events import LOGGER
+from yolov6.utils.events import LOGGER, load_yaml
+from yolov6.utils.config import Config
 from yolov6.utils.checkpoint import load_checkpoint
 from io import BytesIO
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='./yolov6s.pt', help='weights path')
-    parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='image size')  # height, width
+    parser.add_argument('--weights', type=str, default=None, help='weights path')
+    parser.add_argument('--conf-file', default='./configs/yolov6s.py', type=str, help='experiments description file')
+    parser.add_argument('--save-path', default='./weights', type=str, help='save onnx filepath')
+    parser.add_argument('--data-path', default='./data/coco.yaml', type=str, help='path of dataset')
+    parser.add_argument('--input', default="data", type=str, help="input node name of onnx model")
+    parser.add_argument('--output', default="output", type=str, help="output node name of onnx model")
+    parser.add_argument('--img-size', nargs='+', type=int, default=[352, 640], help='image size')  # height, width
     parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--half', action='store_true', help='FP16 half-precision export')
     parser.add_argument('--inplace', action='store_true', help='set Detect() inplace=True')
     parser.add_argument('--simplify', action='store_true', help='simplify onnx model')
     parser.add_argument('--end2end', action='store_true', help='export end2end onnx')
+    parser.add_argument('--conv_models_deploy', action='store_true', help='export muilt output')
     parser.add_argument('--trt-version', type=int, default=8, help='tensorrt version')
     parser.add_argument('--with-preprocess', action='store_true', help='export bgr2rgb and normalize')
     parser.add_argument('--max-wh', type=int, default=None, help='None for tensorrt nms, int value for onnx-runtime nms')
     parser.add_argument('--topk-all', type=int, default=100, help='topk objects for every images')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='iou threshold for NMS')
     parser.add_argument('--conf-thres', type=float, default=0.4, help='conf threshold for NMS')
-    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='3', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     args = parser.parse_args()
     args.img_size *= 2 if len(args.img_size) == 1 else 1  # expand
     print(args)
     t = time.time()
-
+    
     # Check device
     cuda = args.device != 'cpu' and torch.cuda.is_available()
     device = torch.device(f'cuda:{args.device}' if cuda else 'cpu')
     assert not (device.type == 'cpu' and args.half), '--half only compatible with GPU export, i.e. use --device 0'
     # Load PyTorch model
-    model = load_checkpoint(args.weights, map_location=device, inplace=True, fuse=True)  # load FP32 model
+    if args.weights is not None:
+        model = load_checkpoint(args.weights, map_location=device, inplace=True, fuse=True)  # load FP32 model
+    else:
+        cfg = Config.fromfile(args.conf_file)
+        data_dict = load_yaml(args.data_path)
+        if not hasattr(cfg, 'training_mode'):
+            setattr(cfg, 'training_mode', 'repvgg')
+        num_classes = data_dict['nc']
+        model = build_model(cfg, num_classes, device, conv_models_deploy=args.conv_models_deploy)
+
     for layer in model.modules():
         if isinstance(layer, RepVGGBlock):
             layer.switch_to_deploy()
@@ -71,20 +88,27 @@ if __name__ == '__main__':
     print("===================")
     print(model)
     print("===================")
-    
+    flops, params = thop.profile(model, inputs=(img, ))
+    flops, params = thop.clever_format([flops, params], '%.3f')
+    print('flops: %s' %flops)
+    print('params:%s' %params)
+    print("===================")
     y = model(img)  # dry run
 
     # ONNX export
     try:
         LOGGER.info('\nStarting to export ONNX...')
-        export_file = args.weights.replace('.pt', '.onnx')  # filename
+        if args.weights is not None:
+            export_file = args.weights.replace('.pt', '.onnx')  # filename
+        else:
+            export_file = osp.join(args.save_path, osp.basename(args.conf_file)[:-3] + '_notWeight.onnx')
         with BytesIO() as f:
             torch.onnx.export(model, img, f, verbose=False, opset_version=12,
                               training=torch.onnx.TrainingMode.EVAL,
                               do_constant_folding=True,
-                              input_names=['images'],
-                              output_names=['num_dets', 'det_boxes', 'det_scores', 'det_classes']
-                              if args.end2end and args.max_wh is None else ['outputs'],)
+                              input_names=[args.input],
+                              output_names=args.output.split(",")
+                              )
             f.seek(0)
             # Checks
             onnx_model = onnx.load(f)  # load onnx model
