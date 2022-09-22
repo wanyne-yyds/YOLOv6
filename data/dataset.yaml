@@ -1,11 +1,24 @@
-# Please insure that your custom_dataset are put in same parent dir with YOLOv6_DIR
-train: ../custom_dataset/images/train # train images
-val: ../custom_dataset/images/val # val images
-test: ../custom_dataset/images/test # test images (optional)
-
+# COCO 2017 dataset http://cocodataset.org
+train: /data_ssd/ckn_ssd/Data_trainset/YOLOv6-CocoAndYOLOFormat-HOD-220914/images/train2017 # 118287 images
+val: /data_ssd/ckn_ssd/Data_trainset/YOLOv6-CocoAndYOLOFormat-HOD-220914/images/val2017  # 5000 images
+test: /data_ssd/ckn_ssd/Data_trainset/YOLOv6-CocoAndYOLOFormat-HOD-220914/images/val2017
+anno_path: /data_ssd/ckn_ssd/Data_trainset/YOLOv6-CocoAndYOLOFormat-HOD-220914/annotations/instances_val2017.json
+# number of classes
+nc: 11
 # whether it is coco dataset, only coco dataset should be set to True.
 is_coco: False
-# Classes
-nc: 20  # number of classes
-names: ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable', 'dog',
-        'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']  # class names
+
+# class names
+names: [
+        "safety belt",
+        "person", 
+        "deputy person", 
+        "both hands wheel", 
+        "single hands wheel", 
+        "not hands wheel", 
+        "dark", 
+        "bright", 
+        "dark phone", 
+        "bright phone", 
+        "ignore"
+        ]

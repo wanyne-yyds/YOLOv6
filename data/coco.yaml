@@ -1,7 +1,7 @@
 # COCO 2017 dataset http://cocodataset.org
-train: /data_ssd/ckn_ssd/Data_trainset/YOLOX-CocoFormat-IPC-NoFacePose-220729/train2017 # 118287 images
-val: /data_ssd/ckn_ssd/Data_trainset/YOLOX-CocoFormat-IPC-NoFacePose-220729/val2017  # 5000 images
-test: /data_ssd/ckn_ssd/Data_trainset/YOLOX-CocoFormat-IPC-NoFacePose-220729/val2017
+train: ../coco/images/train2017 # 118287 images
+val: ../coco/images/val2017  # 5000 images
+test: ../coco/images/test2017
 anno_path: ../coco/annotations/instances_val2017.json
 # number of classes
 nc: 80
